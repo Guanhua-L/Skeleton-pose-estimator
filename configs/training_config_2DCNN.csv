@@ -1,0 +1,8 @@
+model,learning_rate,batch_size,epoch,weight_decay,lr_decay
+MARS,0.001,64,100,0.,0.95
+resnet18,0.001,512,100,0.,0.95
+resnet34,0.001,64,100,0.,0.95
+resnet50,0.001,512,100,0.,0.95
+alexnet,0.001,512,100,0.,0.95
+googlenet,0.001,512,100,0.,0.95
+inception_v3,0.001,96,100,0.,0.95
