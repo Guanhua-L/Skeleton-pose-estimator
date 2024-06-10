@@ -22,7 +22,9 @@ class CNN_LSTM(nn.Module):
         batch_size = x.shape[0] # (bs, 40, 5, 8, 8)
         x = x.flatten(0, 1) # (bs*40, 5, 8, 8)
         x = self.cnn(x) # (bs*40, input_size)
+        # print(x.shape) [576, 39]
         x = x.reshape((batch_size, self.window, -1)) # (bs, 40, input_size)
+        # print(x.shape) [64, 9, 39]
         x = F.dropout(x, self.dropout)
         x, _ = self.lstm(x)
         if self.bidirectional:

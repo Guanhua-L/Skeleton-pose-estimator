@@ -3,30 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-class CNN(nn.Module):
-    def __init__(self, cnn_model, input_size, hidden_size, num_layers, num_classes, dropout, bidirectional, device, window=40):
-        super().__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.num_classes = num_classes
-        self.dropout = dropout
-        self.bidirectional = bidirectional
-        self.window = window
-
-        self.cnn = cnn_model(num_classes=input_size).to(device)
-        # self.fc = nn.Linear(hidden_size * (bidirectional + 1), num_classes)
-    
-    def forward(self, x):
-        batch_size = x.shape[0] # (bs, 40, 5, 8, 8)
-        x = x.flatten(0, 1) # (bs*40, 5, 8, 8)
-        x = F.dropout(x, self.dropout)
-        x = self.cnn(x) # (bs*40, input_size) x.shape([576,39])
-        x = x.reshape((batch_size, self.window, -1)) # (bs, 40, input_size) x.shape([64, 9, 39])
-        x = F.dropout(x, self.dropout)
-        # x = self.fc(x)
-
-        return x
 
 class CNN_LSTM(nn.Module):
     def __init__(self, cnn_model, input_size, hidden_size, num_layers, num_classes, dropout, bidirectional, device, window=40):
@@ -79,11 +55,11 @@ class MultiHeadAttention(nn.Module):
 
     def scaled_dot_product_attention(self, Q, K, V, uncertainty=None):
         # if uncertainty:
-        if uncertainty is not None:
-            attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (math.sqrt(self.head_dim) * uncertainty.sum())
-        else:
-            attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (math.sqrt(self.head_dim))
+        # try:
+        #     attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (math.sqrt(self.head_dim) * uncertainty.sum())
+        # except:
         # print(f'K scaled_dot_product_attention size: {K.size()}')
+        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (math.sqrt(self.head_dim))
         # else:
         #     attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (math.sqrt(self.head_dim))
 
@@ -117,10 +93,22 @@ class FFN(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(d_model, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, d_model)
-        self.gelu = nn.GELU()
+        # self.gelu = nn.GELU()
+        self.relu = nn.ReLU()
     
     def forward(self, x):
-        return self.fc2(self.gelu(self.fc1(x)))
+        return self.fc2(self.relu(self.fc1(x)))
+    
+class MLP(nn.Module):
+    def __init__(self, d_model, hidden_dim, output_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(d_model, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+        # self.gelu = nn.GELU()
+        self.relu = nn.ReLU()
+    
+    def forward(self, x):
+        return self.fc2(self.relu(self.fc1(x)))
 
 class PositionEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length):
@@ -138,8 +126,9 @@ class PositionEncoding(nn.Module):
         
     def forward(self, x):
         # print(f'pe siez: {self.pe[:, :x.size(1)].size()}')
-        batch_size, seq_length, _ = x.size()
-        return x + self.pe[:, :seq_length].expand(batch_size, -1, -1)
+        # print(f'x size: {x.size()}')
+        # .expand(x.size(0), -1, -1)
+        return x + self.pe[:, :x.size(1)]
 
 class Embedding(nn.Module):
     def __init__(self, vocab_size, embed_dim):
@@ -147,14 +136,16 @@ class Embedding(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_dim)
 
     def forward(self, x):
-        # x = x.view((-1, 40))
-        min_val = torch.min(x)
-        max_val = torch.max(x)
+        # x = torch.flatten(x)
+        
+        x = x.view((-1, 5*8*8))
+        # min_val = torch.min(x)
+        # max_val = torch.max(x)
 
-        max_int = len(x) - 1
-        normalized_array = ((x - min_val) / (max_val - min_val)) * max_int
+        # max_int = len(x) - 1
+        # normalized_array = ((x - min_val) / (max_val - min_val)) * max_int
         # normalized_array.long()
-        x = self.embedding(normalized_array.long())
+        x = self.embedding(x)
 
         return x
 
@@ -168,15 +159,16 @@ class EncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
         
+        
     def forward(self, x, uncertainty):
-        tmp = self.norm1(x)
+        hidden = self.norm1(x)
         # print(f'encoder x size: {x.size()}')
-        attn_output = self.self_attn(tmp, tmp, tmp, uncertainty)
+        attn_output = self.self_attn(hidden, hidden, hidden, uncertainty)
         x = x + self.dropout(attn_output)
         # print(f'x.shape: {x.shape}')
-        tmp = self.norm2(x)
-        # print(f'tmp.shape: {tmp.shape}')
-        ff_output = self.feed_forward(tmp)
+        hidden = self.norm2(x)
+        # print(f'hidden.shape: {hidden.shape}')
+        ff_output = self.feed_forward(hidden)
         x = x + self.dropout(ff_output)
         # print(f'after encoder x size: {x.size()}')
         return x
@@ -185,25 +177,32 @@ class EncoderLayer(nn.Module):
 class Transformer(nn.Module):
     def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout, device):
         super().__init__()
+        self.tgt_vocab_size = tgt_vocab_size
         self.encoder_embedding = Embedding(src_vocab_size, d_model).to(device)
         self.positional_encoding = PositionEncoding(d_model, max_seq_length).to(device)
 
         #* encoder
         self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout, device) for 
                                             _ in range(num_layers)])
-        #* decoder
+        
         self.fc = nn.Linear(d_model, tgt_vocab_size)
         self.dropout = nn.Dropout(dropout)
+        self.mlp = MLP(320*tgt_vocab_size, d_ff, 39)
 
     def forward(self, src, uncertainty=None):
         enc_output = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
+        # src = src.view((-1, 5*8*8))
+        # enc_output = self.dropout(self.positional_encoding(src))
 
         for enc_layer in self.encoder_layers:
             enc_output = enc_layer(enc_output, uncertainty)
         # print(f'enc out size: {enc_output.size()}')
 
         output = self.fc(enc_output)
+        output = output.view((-1, 320*self.tgt_vocab_size))
+        output = self.mlp(output)
         # print(f'enc out size: {output.size()}')
+        
         return output.squeeze()
     
 # class ChannelAttention(nn.Module):

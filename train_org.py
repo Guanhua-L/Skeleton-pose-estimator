@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 # from FIA_dataset.FIA_dataset_2DCNN import FIA_dataset
 from FIA_dataset.FIA_dataset_CNNLSTM import FIA_dataset
-from model import MARS, CNN_LSTM
+from model_org import MARS, CNN_LSTM
 from util import get_config_2DCNN, get_config_CNNLSTM, get_distance, get_mae, init_device
 # import resnet # 3DCNN
 
@@ -65,7 +65,7 @@ class Trainer():
             )
         else:
             '''Random 8:2 Split'''
-            dataset = FIA_dataset(subjects=list(range(1, 25)), cr=self.args.cr, window=self.window)
+            dataset = FIA_dataset(subjects=list(range(1, 25)), cr=self.args.cr, fold=self.args.fold, window=self.window)
             indices = list(range(len(dataset)))
             split = int(np.floor(.8 * len(dataset)))
             np.random.shuffle(indices)

@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from train_org import Trainer
-# from train_single_transformer import Trainer
+# from train_org import Trainer
+from train_single_transformer import Trainer
 # from train import Trainer
 
 
@@ -39,10 +39,10 @@ def init_parser() -> argparse.Namespace:
 
 
 def init_path(args: argparse.Namespace) -> Path:
-    result_path = Path(f'result/{datetime.now().strftime("%Y%m%d_%H%M%S")}_{args.cr}_{f"test{args.test}" if args.test else f"8:2_fold{args.fold}"}_{args.model}')
+    result_path = Path(f'result/single_transformer/{datetime.now().strftime("%Y%m%d_%H%M%S")}_{args.cr}_{f"test{args.test}" if args.test else f"8:2_fold{args.fold}"}_{args.model}')
     # result_path = Path(f'/mnt/nas/FIA/MARS_result/{datetime.now().strftime("%Y%m%d_%H%M%S")}_{args.cr}_{f"test{args.test}" if args.test else "8:2"}_{args.model}')
     (result_path / 'checkpoints').mkdir(mode=0o777, parents=True)
-    pd.read_csv('configs/training_config_CNNLSTM.csv', index_col=0).loc[[args.model]].to_csv(result_path / 'training_config.csv')
+    pd.read_csv('configs/training_config_CNNLSTM_transformer.csv', index_col=0).loc[[args.model]].to_csv(result_path / 'training_config.csv')
     print(f'Results will be saved in {result_path}')
     return result_path
 

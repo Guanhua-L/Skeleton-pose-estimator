@@ -2,7 +2,11 @@ __pycache__
 FIA_dataset
 log
 result
+old_result
 skeleton
 skeleton_driver
 spe_skeleton
 uncertainty_skeleton
+python_test.py
+baseline
+figure
