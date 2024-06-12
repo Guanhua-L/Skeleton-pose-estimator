@@ -28,7 +28,7 @@ def draw2(categories, values, values2, color, color2, title, target):
     
     legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in ('dodgerblue', 'orange')]
     # plt.legend(legend_handles, ['Baseline', 'Baseline', 'Transformer', 'Transformer'], bbox_to_anchor=(1.04, 0.25), loc='upper left', fontsize=fontsize[3], edgecolor='#000')
-    plt.legend(legend_handles, ['Baseline', 'Transformer'], loc='lower right', fontsize=12, edgecolor='#000')
+    plt.legend(legend_handles, ['Baseline', 'Transformer'], loc='lower right', fontsize=16, edgecolor='#000')
     plt.tight_layout()
     plt.savefig(target, dpi=300, bbox_inches='tight')
     plt.savefig(f'{target[:-3]}eps', bbox_inches='tight')
@@ -112,8 +112,12 @@ for index in range(0,length):
     plt.xticks(fontsize=fontsize[3])
     plt.tight_layout()
 
-    plt.savefig(f'./figure/test_distance_error_{index}.png', dpi=300, bbox_inches='tight')
-    plt.savefig(f'./figure/test_distance_error_{index}.eps', bbox_inches='tight')
+    if index == 0:
+        plt.savefig(f'./figure/Random_{index}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'./figure/Random_{index}.eps', bbox_inches='tight')
+    else:
+        plt.savefig(f'./figure/Cold_Start_{index}.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'./figure/Cold_Start_{index}.eps', bbox_inches='tight')
     plt.cla()
 
     categories = ['train', 'test']
@@ -123,4 +127,7 @@ for index in range(0,length):
     colors2 = ['orange', 'orange', 'orange', 'orange']
     value = [train_distance_error_baseline[-1], test_distance_error_baseline[-1]]
     value2 = [train_distance_error[-1], test_distance_error[-1]]
-    draw2(categories, value, value2, colors, colors2, f'{index}', f'./figure/bar_test_distance_error_{index}.png')
+    if index == 0:
+        draw2(categories, value, value2, colors, colors2, f'{index}', f'./figure/bar_Random_{index}.png')
+    else:
+        draw2(categories, value, value2, colors, colors2, f'{index}', f'./figure/bar_Cold_Start_{index}.png')
