@@ -37,13 +37,15 @@ class customLoss(torch.nn.Module):
         super(customLoss, self).__inti__()
 
     def forward(self, output, target, uncertainty):
-        distance_error = output - target
-        diff = torch.pow( (distance_error/uncertainty), 2 )
-        # print('diff: ', diff)
-        # print('uncertainty: ', uncertainty)
+        diff = get_distance(output, target)
+        # print(f'diff {diff.shape}:  {diff}')
+        # print(f'uncertainty {uncertainty.shape}:  {uncertainty}')
         un = torch.log(torch.pow(uncertainty,2))
-        # print('uncertainty log: ', un )
-        final = torch.mean( torch.pow(distance_error, 2) ) + 0.0001*torch.mean( diff + un )
+        fi_un = torch.zeros((un.shape[0], un.shape[1] // 3))
+        for i in range(0, un.shape[1], 3):
+            fi_un[:, i // 3] = torch.linalg.norm(un[:, i:i + 3], dim=1)
+        # print(f'uncertainty log {fi_un.shape}: {fi_un}')
+        final = torch.mean(diff) + 0.0001*torch.mean( diff + fi_un )
         # print('final: ', final)
         return final
     
@@ -148,13 +150,10 @@ class Trainer():
         # checkpoint = Path(f'/mnt/data/guanhua/SPE/result/20240306_171631_CR_8:2_fold1_resnet34/checkpoints/12.pt') #20240308_125903_CR_8:2_fold1_resnet34
         # model.load_state_dict(torch.load(checkpoint))
 
-        uncertainty = False
+        uncertainty = True
         loss_function = torch.nn.MSELoss()
         loss_function_un = customLoss()
-        # if uncertainty:
-        #     loss_function = customLoss()
-        # else:
-        #     loss_function = torch.nn.MSELoss()
+        
         optimizer = torch.optim.Adam(model.parameters(), self.lr, weight_decay=self.weight_decay, betas=[0.5, 0.999], amsgrad=False)
         lr_decayer = torch.optim.lr_scheduler.ExponentialLR(optimizer, self.lr_decay)
         #!transformer
@@ -164,17 +163,16 @@ class Trainer():
         min_test_distance_avg = 999999
 
         variance = 0.0
-        num_samples = 4
+        num_samples = 8
         for epoch in range(1, self.epoch + 1):
             
             '''Train'''
             model.train()
             train_loss, train_mae, train_distance = 0., torch.zeros((self.batch_size * len(self.train_loader), 13)), torch.zeros((self.batch_size * len(self.train_loader), 13))
+            train_var = torch.zeros((self.batch_size * len(self.test_loader), 1))
             train_start_time = time.time()
             pbar = tqdm(self.train_loader)
-            # if epoch < 2:
-            #     print(f'Skip epoch:{epoch}')
-            #     continue
+
             for i, (data, labels) in enumerate(pbar):
                 # data = self.resize_data(data)
                 data = data.view(self.batch_size, 5, 8, 8).to(self.device)
@@ -213,7 +211,7 @@ class Trainer():
                 # torch.set_printoptions(precision=10, sci_mode=False)
                 # print('preds: ', preds)
                 # print('mean: ', pred)
-                # print('var: ', variance)
+                # print(f'var {variance.shape}: {variance}')
                 # exit()
                 # print('pred:', pred.shape)
                 # print(f'var: {variance.shape}')
@@ -242,13 +240,16 @@ class Trainer():
                 #     train_loss_error_counter += 1
                 # print('loss: ', loss)
                 # print('var: ', var)
-                # exit()
                 train_loss += loss.item()
 
                 train_mae[i * self.batch_size:(i + 1) * self.batch_size, :] = get_mae(pred, labels)
                 # print('train mae: ', train_mae.mean(0).shape)
                 # exit()
                 train_distance[i * self.batch_size:(i + 1) * self.batch_size, :] = get_distance(pred, labels)
+                train_var[i * self.batch_size:(i + 1) * self.batch_size, :] = variance.mean()
+                # print(train_var.mean().tolist(), train_var)
+                # if i >= 3:
+                #     exit()
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -265,6 +266,8 @@ class Trainer():
             model.eval()
             with torch.no_grad():
                 test_loss, test_mae, test_distance = 0., torch.zeros((self.batch_size * len(self.test_loader), 13)), torch.zeros((self.batch_size * len(self.test_loader), 13))
+                if uncertainty:
+                    test_var = torch.zeros((self.batch_size * len(self.test_loader), 1))
                 # test_mae2, test_distance2 = torch.zeros((self.batch_size * len(self.test_loader), 13)), torch.zeros((self.batch_size * len(self.test_loader), 13))
                 inference_time = 0.
                 pbar = tqdm(self.test_loader)
@@ -275,16 +278,18 @@ class Trainer():
 
                     start_time = time.time()
 
-                    pred = model(data)
                     # pred = pred[:, -1, :].to(self.device)
                     # num_samples = 10
-                    # preds = []
-                    # for _ in range(num_samples):
-                    #     pred = model(data)
-                    #     preds.append(pred)
-                    # preds = torch.stack(preds)
-                    # pred = torch.mean(preds, dim=0)
-                    # variance = preds.var(0)
+                    if uncertainty:
+                        preds = []
+                        for _ in range(num_samples):
+                            pred = model(data)
+                            preds.append(pred)
+                        preds = torch.stack(preds)
+                        pred = torch.mean(preds, dim=0)
+                        variance = preds.var(0)
+                    else:
+                        pred = model(data)
                     
                     #!transformer
                     # pred2 = transformer(pred, variance)
@@ -324,6 +329,8 @@ class Trainer():
 
                     test_mae[i * self.batch_size:(i + 1) * self.batch_size, :] = get_mae(pred, labels)
                     test_distance[i * self.batch_size:(i + 1) * self.batch_size, :] = get_distance(pred, labels)
+                    test_var[i * self.batch_size:(i + 1) * self.batch_size, :] = variance.mean()
+                    
                     # test_mae2[i * self.batch_size:(i + 1) * self.batch_size, :] = get_mae(pred2, labels)
                     # test_distance2[i * self.batch_size:(i + 1) * self.batch_size, :] = get_distance(pred2, labels)
 
@@ -364,7 +371,7 @@ class Trainer():
             print(f'| Train dist:\t{train_distance_avg} cm')
             print(f'| Test  dist:\t{test_distance_avg} cm')
 
-            if lr_decayer and epoch%4==0 and epoch>1:
+            if lr_decayer:
                 lr_decayer.step()
 
             result_header = ['train_loss', 'test_loss', 'train_mae', 'test_mae', 'train_distance', 'test_distance_mean', 'test_distance_std', 'nose_mean',
@@ -376,7 +383,12 @@ class Trainer():
             result = [train_loss, test_loss, train_mae_avg, test_mae_avg, train_distance_avg, test_distance_avg, test_distance_mean.std().item()]
             result.extend(test_distance_mean.tolist())
             result.extend(test_distance_std.tolist())
-
+            # if uncertainty:
+            #     try:
+            #         result_header.extend('uncertainty')
+            #         result.extend(test_var.mean())
+            #     except:
+            #         print('extend variance error')
             df = pd.DataFrame([result], columns=result_header, index=[epoch])
             if epoch == 1:
                 df.to_csv(self.result_path / 'result.csv', mode='a+')
